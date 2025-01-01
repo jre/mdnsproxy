@@ -32,7 +32,9 @@ class DispatchingResolver(dnslib.proxy.BaseResolver):
                   b'9.e.f.ip6.arpa.', b'a.e.f.ip6.arpa.', b'b.e.f.ip6.arpa.')
 
     def __init__(self, ucast_addr):
-        self.ucast_resv = dnslib.proxy.ProxyResolver(ucast_addr, 53, 5)
+        self.ucast_resv = None
+        if ucast_addr is not None:
+            self.ucast_resv = dnslib.proxy.ProxyResolver(ucast_addr, 53, 5)
         self.mcast_resv = dnslib.proxy.ProxyResolver('224.0.0.251', 5353, 2)
 
     def resolve(self, request, handler):
@@ -43,7 +45,11 @@ class DispatchingResolver(dnslib.proxy.BaseResolver):
                     resp.header.rd = True
                     resp.header.ra = True
                 return resp
-        return self.ucast_resv.resolve(request, handler)
+        if self.ucast_resv is not None:
+            return self.ucast_resv.resolve(request, handler)
+        error = request.reply(aa=0)
+        error.header.rcode = dnslib.RCODE.SERVFAIL
+        return error
 
 
 class Daemonize(daemon.DaemonContext):
@@ -120,7 +126,7 @@ def GroupName(arg):
 def main():
     parser = argparse.ArgumentParser(
         description='Proxy DNS requests to a recursive DNS server or to mDNS')
-    parser.add_argument('server', type=IPv4Address,
+    parser.add_argument('server', type=IPv4Address, nargs='?',
                         help='Recursive DNS server IPv4 address')
     parser.add_argument('-a', dest='bindaddr', type=IPv4Address, default='',
                         help='IPv4 address to listen for requests on')
